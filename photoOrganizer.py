@@ -43,7 +43,7 @@ def moveFilesIntoFoldersByDate (source=None, destination=None):
 		
 def test (source, destinationRoot):
 	index = {} # destination index ex. {'2012-01-01':[(IMG_10132.JPG, 1,023,231), (IMG_10133.JPG, 1023323)], 2012-01-02:[(IMG_3432.JPG, 342323423), (IMG_4332.JPG, 3423234)] }
-	nameCountIndex = {} # ex. {('2012-01-01', 'IMG_342.JPG'):3}
+	#nameCountIndex = {} # ex. {('2012-01-01', 'IMG_342.JPG'):3}
 	sourcesIndex = {} #ex. {'2012-01-01':['/Users/eddy/Pictures/2012-01-01/IMG_32342.JPG', '/Users/eddy/Pictures/2012-01-01/IMG_3434.JPG'], '2012-01-02:[]}
 	conflictIndex = {} #
 	copies = {}
@@ -57,7 +57,7 @@ def test (source, destinationRoot):
 				struct = time.localtime (mtime);
 				destinationFolder = "%s-%02i-%02i" % (struct[0], struct[1], struct[2]);
 				
-				# create index entry if it doesn't exist
+				# create destination index entry if it doesn't exist
 				if (not destinationFolder in index):
 					index[destinationFolder] = []
 					sourcesIndex[destinationFolder] = []
@@ -73,24 +73,34 @@ def test (source, destinationRoot):
 							
 				
 				#print destinationFolder
-				destination = os.path.join(destinationRoot, destinationFolder);
-				destination = os.path.join(destination, file);
-				if ((file, size) in index[destinationFolder]) :
-					conflicts.append (os.path.join (root,file))
-					if (file not in conflictIndex):
-						conflictIndex[file] = []
-					conflictIndex[file].append ((os.path.join(root,file), size))
-				else:
-					if ((destinationFolder, file) in nameCountIndex):
-						newFileName ='%s_%i' % (file, nameCountIndex[(destinationFolder,file)])
-						nameCountIndex[(destinationFolder, file)] += 1
-						index [destinationFolder].append((newFileName, size));
-						copies[os.path.join(root,file)] = os.path.join(destinationFolder, newFileName)
-					else:
-						nameCountIndex[(destinationFolder, file)] = 1
-						index [destinationFolder].append((file, size));
-						copies[os.path.join(root,file)] = os.path.join(destinationFolder,file)
+				destination = os.path.join(destinationRoot, destinationFolder)
+				destination = os.path.join(destination, file)
 				
+				#see if destination folder already contains this version of file
+				suffixCounter = 1
+				newFile = file
+				done = False
+				while (!done):
+					found = False
+					for e in index[destinationFolder]:
+						if (e[0] == newFile):
+							found = True
+							if (e[1] == size):
+								done = True
+								#log conflict
+								conflicts.append (os.path.join (root,newFile))
+								if (newFile not in conflictIndex):
+									conflictIndex[newFile] = []
+								conflictIndex[newFile].append ((os.path.join(root,file), size))								
+							else:
+								newFile = file+'_'+suffixCounter
+								suffixCounter++
+							break;
+					if (!found):
+						index [destinationFolder].append((newFileName, size))
+						copies[os.path.join(root,file)] = os.path.join(destinationFolder, newFileName)
+						done = True
+						
 				sourcesIndex[destinationFolder].append (os.path.join(root, file))
 
 #	for key in sourcesIndex.keys():
