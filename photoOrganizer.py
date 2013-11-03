@@ -23,6 +23,7 @@ help_message = '''
 The help message goes here.
 '''
 
+sizeToleranceFactor = 0.05 
 
 class Usage(Exception):
 	def __init__(self, msg):
@@ -42,20 +43,26 @@ def moveFilesIntoFoldersByDate (source=None, destination=None):
 				shutil.copy2(os.path.join(root,file), destinationPath)
 
 def get_minimum_creation_time(exif_data):
-    mtime = None
-    if 306 in exif_data and exif_data[306] < mtime: # 306 = DateTime
-        mtime = exif_data[306]
-    if 36867 in exif_data and exif_data[36867] < mtime: # 36867 = DateTimeOriginal
-        mtime = exif_data[36867]
-    if 36868 in exif_data and exif_data[36868] < mtime: # 36868 = DateTimeDigitized
-        mtime = exif_data[36868]
-    return mtime
+	if (exif_data == None):
+		return None
+
+	mtime = None
+	if 306 in exif_data and exif_data[306] < mtime: # 306 = DateTime
+		mtime = exif_data[306]
+	if 36867 in exif_data and exif_data[36867] < mtime: # 36867 = DateTimeOriginal
+		mtime = exif_data[36867]
+	if 36868 in exif_data and exif_data[36868] < mtime: # 36868 = DateTimeDigitized
+		mtime = exif_data[36868]
+	return mtime
 	
 import PIL.ExifTags			
 def exifTime(filepath):
-	print filepath
-	img = Image.open(filepath)
-	exif_data = img._getexif()
+	try:
+		img = Image.open(filepath)
+		exif_data = img._getexif()
+	except Exception, e:
+		print 'Error obtaining exif data for file ' + filepath
+		return None
 
 #	exif = {
 #	    PIL.ExifTags.TAGS[k]: v
@@ -82,19 +89,23 @@ def doit (source, destinationRoot):
 	conflicts = []
 	print source
 	for root, dirs, files in os.walk(source, topdown=False):
+		numNew = 0
+		numDups = 0
+		numVersions = 0
 		for file in files:
-			print file
 			(mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(os.path.join(root,file))
 #			mtime = os.path.getmtime(os.path.join(root,file))
 			extension = string.upper(os.path.splitext(file)[1][1:])
 			if (extension == 'JPG' or extension == 'AVI' or extension == 'MOV' or extension == 'PNG'):
 				filepath = os.path.join(root,file)
-				print filepath
-				struct = exifTime(filepath)
-				if (struct == None):
-					struct = time.localtime (mtime);
+				dateStruct = None
+				if (extension == 'JPG'):
+					dateStruct = exifTime(filepath)
 					
-				destinationFolder = "%s-%02i-%02i" % (struct[0], struct[1], struct[2]);
+				if (dateStruct == None):
+					dateStruct = time.localtime (mtime);
+					
+				destinationFolder = "%s-%02i-%02i" % (dateStruct[0], dateStruct[1], dateStruct[2]);
 				
 				# create destination index entry if it doesn't exist
 				if (not destinationFolder in index):
@@ -124,24 +135,37 @@ def doit (source, destinationRoot):
 					for e in index[destinationFolder]:
 						if (e[0] == newFile):
 							found = True
-							if (e[1] == size):
+							if (e[1] > (size - (size*sizeToleranceFactor))): # Only create versions which are larger than the existing one by some margin
 								done = True
-								#log conflict
+								#log duplicate
 								conflicts.append (os.path.join (root,newFile))
+								numDups +=1
 								if (newFile not in conflictIndex):
 									conflictIndex[newFile] = []
 								conflictIndex[newFile].append ((os.path.join(root,file), size))								
-							else:
-								newFile = file+'_'+`suffixCounter`
+							else: # try new version
+								tokens = file.split('.')								
+								filename = tokens[0]
+								fileExt = ''
+								if (len(tokens) > 1):
+									fileExt = tokens[1]
+								newFile = filename+'_#'+`suffixCounter`+'.'+fileExt
 								suffixCounter+= 1
 							break;
-					if (not found):
+					if (not found): 
+						#log a copy operation
 						index [destinationFolder].append((newFile, size))
 						copies[os.path.join(root,file)] = os.path.join(destinationFolder, newFile)
+#						print os.path.join(root,file) + ' -> ' + os.path.join(destinationFolder, newFile)
+						if (suffixCounter > 1) :
+							numVersions +=1
+						else:
+							numNew +=1
 						done = True
 						
 				sourcesIndex[destinationFolder].append (os.path.join(root, file))
-
+		print root + ' duplicates: ' + `numDups` + '  new: ' + `numNew` + '  versions:' + `numVersions`
+		
 #	for key in sourcesIndex.keys():
 #		print key
 #		for source in sourcesIndex[key]:
@@ -201,8 +225,9 @@ def main(argv=None):
 		print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
 		print >> sys.stderr, "\t for help use --help"
 		return 2
-		
-	#doit ('/Volumes/Data/Picture Sources/Deepblue/Pictures_Old', '/Volumes/Data/Photo Organizer Library')
-	#test2()
+	
+	print 'source = ' + `args[0]` + ' destination = ' + `args[1]`	
+	doit (args[0], args[1])
+
 if __name__ == "__main__":
 	sys.exit(main())
